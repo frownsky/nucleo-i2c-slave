@@ -17,4 +17,8 @@ The slave and its registers can be conveniently accessed by using HAL. Example o
 HAL_I2C_Mem_Read(&hi2c1, (I2C_SLAVE_ADDR << 1) , 0x10, I2C_MEMADD_SIZE_8BIT, &whoami, 1, 100);
 ```
 
+## How to setup
+* This was tested on a Nucleo F302R8 board
+* Connect SCL at PB8 and SDA at PB9
+
 
