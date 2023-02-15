@@ -5,7 +5,6 @@
 * This I2C slave has an address of `0x20`
 
 * WHO_AM_I has an address of `0x10`. When read, gives out `0xEE` 
-
 * OUT_X has an address of `0x21`. When read, gives out the x-axis linear acceleration
 * OUT_Y has an address of `0x22`. When read, gives out the y-axis linear acceleration
 * OUT_Z has an address of `0x23`. When read, gives out the z-axis linear acceleration

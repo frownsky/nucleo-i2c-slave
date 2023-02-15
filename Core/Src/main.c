@@ -36,6 +36,9 @@
 #define OUT_X 0x21
 #define OUT_Y 0x22
 #define OUT_Z 0x23
+#define SLAVE_WORKING
+//#define SLAVE_EXPERIMENT
+
 
 /* USER CODE END PD */
 
@@ -48,6 +51,7 @@
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
 
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
@@ -55,6 +59,7 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
@@ -63,16 +68,10 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-
-// emulated I2C RAM
-
-
-//#define SLAVE_EXPERIMENT
-#define SLAVE_WORKING
-
 uint8_t receive_buff;
 uint8_t data = 0xf8;
+uint8_t uart_rx_buff[];
+
 /* USER CODE END 0 */
 
 /**
@@ -103,10 +102,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_I2C_EnableListen_IT( &hi2c1 );
+  HAL_UART_Receive_DMA(&huart2, uart_rx_buff, 1);
+  HAL_I2C_EnableListen_IT(&hi2c1);
 
 
 
@@ -231,7 +232,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 38400;
+  huart2.Init.BaudRate = 57600;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -247,6 +248,22 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel6_IRQn);
 
 }
 
@@ -367,12 +384,23 @@ void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef *hi2c)
 
 }
 
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+
+	UNUSED(huart);
+
+	// Receive
+	uint8_t buff = uart_rx_buff[0];
+
+	HAL_UART_Transmit(&huart2, uart_rx_buff, 1, HAL_MAX_DELAY);
+
+}
+
+
 #else SLAVE_EXPERIMENT
 
 
 #endif
-
-
 
 /* USER CODE END 4 */
 
