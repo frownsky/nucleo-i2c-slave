@@ -33,9 +33,14 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define WHO_AM_I 0x10
-#define OUT_X 0x21
-#define OUT_Y 0x22
-#define OUT_Z 0x23
+#define OUT_X_L 0x21
+#define OUT_X_H 0x22
+#define OUT_Y_L 0x23
+#define OUT_Y_H 0x24
+#define OUT_Z_L 0x25
+#define OUT_Z_H 0x26
+#define OUT_TEMP_L 0x27
+#define OUT_TEMP_H 0x28
 #define SLAVE_WORKING
 //#define SLAVE_EXPERIMENT
 
@@ -73,7 +78,10 @@ static void MX_ADC1_Init(void);
 /* USER CODE BEGIN 0 */
 uint8_t data = 0xf8;
 uint8_t uart_rx_buff[];
-volatile uint8_t receive_buff;
+uint8_t receive_buff;
+
+volatile uint8_t transferRequested = 0;
+volatile uint8_t transferDirection;
 volatile uint8_t adc_raw_value = 0;
 
 /* USER CODE END 0 */
@@ -125,9 +133,56 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	  adc_raw_value = HAL_ADC_GetValue(&hadc1);
+	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
+	adc_raw_value = HAL_ADC_GetValue(&hadc1);
 
+	if (transferRequested){
+		// Static data for now
+		switch (receive_buff){
+			case WHO_AM_I:
+				data = 0xEE;
+				break;
+			case OUT_X_L:
+				data = adc_raw_value;
+				break;
+			case OUT_X_H:
+				data = 255 - adc_raw_value;
+				break;
+			case OUT_Y_L:
+				data = 0xb8;
+				break;
+			case OUT_Y_H:
+				data = 0xb8;
+				break;
+			case OUT_Z_L:
+				data = 0xc7;
+				break;
+			case OUT_Z_H:
+				data = 0xc7;
+				break;
+			case OUT_TEMP_L:
+				data = adc_raw_value;
+				break;
+			case OUT_TEMP_H:
+				data = adc_raw_value;
+				break;
+			default:
+				data = 0xf9;
+				break;
+		}
+		// Receiving
+		if( transferDirection == I2C_DIRECTION_TRANSMIT )
+		{
+			HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, &receive_buff, 1, I2C_NEXT_FRAME);
+
+		}
+		// Transmitting
+		else
+		{
+			HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, &data, 1, I2C_NEXT_FRAME);
+		}
+		transferRequested = 0;
+	}
   }
   /* USER CODE END 3 */
 }
@@ -385,36 +440,8 @@ static void MX_GPIO_Init(void)
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
 {
-	// Static data for now
-	switch (receive_buff){
-		case WHO_AM_I:
-			data = 0xEE;
-			break;
-		case OUT_X:
-			data = adc_raw_value;
-			break;
-		case OUT_Y:
-			data = 0xb8;
-			break;
-		case OUT_Z:
-			data = 0xc7;
-			break;
-		default:
-			data = 0xf9;
-			break;
-	}
-	// Receiving
-	if( TransferDirection == I2C_DIRECTION_TRANSMIT )
-	{
-		HAL_I2C_Slave_Seq_Receive_IT(hi2c, &receive_buff, 1, I2C_NEXT_FRAME);
-
-	}
-	// Transmitting
-	else
-	{
-		HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &data, 1, I2C_NEXT_FRAME);
-	}
-
+	transferRequested = 1;
+	transferDirection = TransferDirection;
 }
 
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
