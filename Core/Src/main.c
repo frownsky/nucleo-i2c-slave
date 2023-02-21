@@ -82,7 +82,8 @@ uint8_t receive_buff;
 
 volatile uint8_t transferRequested = 0;
 volatile uint8_t transferDirection;
-volatile uint8_t adc_raw_value = 0;
+volatile uint16_t adc_raw_value = 0;
+
 
 /* USER CODE END 0 */
 
@@ -134,7 +135,8 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	adc_raw_value = HAL_ADC_GetValue(&hadc1);
+	adc_raw_value = HAL_ADC_GetValue(&hadc1); // 16-bit, 0-4096
+
 
 	if (transferRequested){
 		// Static data for now
@@ -143,16 +145,16 @@ int main(void)
 				data = 0xEE;
 				break;
 			case OUT_X_L:
-				data = adc_raw_value;
+				data = (uint8_t)(adc_raw_value & 0xFF);
 				break;
 			case OUT_X_H:
-				data = 255 - adc_raw_value;
+				data = (uint8_t)(adc_raw_value >> 8);
 				break;
 			case OUT_Y_L:
-				data = 0xb8;
+				data = (uint8_t)((4096 - adc_raw_value) & 0xFF);
 				break;
 			case OUT_Y_H:
-				data = 0xb8;
+				data = (uint8_t)((4096 - adc_raw_value) >> 8);
 				break;
 			case OUT_Z_L:
 				data = 0xc7;
@@ -161,10 +163,10 @@ int main(void)
 				data = 0xc7;
 				break;
 			case OUT_TEMP_L:
-				data = adc_raw_value;
+				data = (uint8_t)(adc_raw_value & 0xFF);
 				break;
 			case OUT_TEMP_H:
-				data = adc_raw_value;
+				data = (uint8_t)(adc_raw_value >> 8);
 				break;
 			default:
 				data = 0xf9;
@@ -254,7 +256,7 @@ static void MX_ADC1_Init(void)
   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_8B;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.ContinuousConvMode = ENABLE;
   hadc1.Init.DiscontinuousConvMode = DISABLE;
