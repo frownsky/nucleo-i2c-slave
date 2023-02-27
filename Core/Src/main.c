@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "stdlib.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -76,13 +77,20 @@ static void MX_ADC1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint8_t data = 0xf8;
+uint8_t AddrToData(uint8_t receive_addr);
+uint8_t data_tx = 0xf8;
 uint8_t uart_rx_buff[];
-uint8_t receive_buff;
+uint8_t receive_buff = 0;
 
 volatile uint8_t transferRequested = 0;
 volatile uint8_t transferDirection;
 volatile uint16_t adc_raw_value = 0;
+volatile uint8_t firstByteTransmitted = 0;
+
+
+volatile uint8_t offset = 0;
+volatile uint8_t slaveTxComplete = 0;
+
 
 
 /* USER CODE END 0 */
@@ -94,6 +102,7 @@ volatile uint16_t adc_raw_value = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -134,57 +143,40 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	HAL_I2C_EnableListen_IT(&hi2c1);
 	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 	adc_raw_value = HAL_ADC_GetValue(&hadc1); // 16-bit, 0-4096
 
 
-	if (transferRequested){
-		// Static data for now
-		switch (receive_buff){
-			case WHO_AM_I:
-				data = 0xEE;
-				break;
-			case OUT_X_L:
-				data = (uint8_t)(adc_raw_value & 0xFF);
-				break;
-			case OUT_X_H:
-				data = (uint8_t)(adc_raw_value >> 8);
-				break;
-			case OUT_Y_L:
-				data = (uint8_t)((4096 - adc_raw_value) & 0xFF);
-				break;
-			case OUT_Y_H:
-				data = (uint8_t)((4096 - adc_raw_value) >> 8);
-				break;
-			case OUT_Z_L:
-				data = 0xc7;
-				break;
-			case OUT_Z_H:
-				data = 0xc7;
-				break;
-			case OUT_TEMP_L:
-				data = (uint8_t)(adc_raw_value & 0xFF);
-				break;
-			case OUT_TEMP_H:
-				data = (uint8_t)(adc_raw_value >> 8);
-				break;
-			default:
-				data = 0xf9;
-				break;
-		}
-		// Receiving
-		if( transferDirection == I2C_DIRECTION_TRANSMIT )
-		{
-			HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, &receive_buff, 1, I2C_NEXT_FRAME);
+	if (slaveTxComplete)
+	{
+		offset++;
+		data_tx = AddrToData(receive_buff + offset);
+		HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, &data_tx, 1, I2C_NEXT_FRAME); // sends the subsequent byte
+		slaveTxComplete = 0;
 
+	}
+
+	if (transferRequested)
+	{
+		// master -> slave
+		if(transferDirection  == I2C_DIRECTION_TRANSMIT)
+		{
+			HAL_I2C_Slave_Seq_Receive_IT(&hi2c1, &receive_buff, 1, I2C_NEXT_FRAME); // receives the starting register address
 		}
-		// Transmitting
+		// slave -> master
 		else
 		{
-			HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, &data, 1, I2C_NEXT_FRAME);
+			data_tx = AddrToData(receive_buff);
+			HAL_I2C_Slave_Seq_Transmit_IT(&hi2c1, &data_tx, 1, I2C_NEXT_FRAME); // sends the first byte
+			slaveTxComplete = 0;
 		}
 		transferRequested = 0;
 	}
+
+
+
+
   }
   /* USER CODE END 3 */
 }
@@ -440,6 +432,7 @@ static void MX_GPIO_Init(void)
 
 #ifdef SLAVE_WORKING
 
+// Triggered when START and Repeated Start is transmitted by master
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
 {
 	transferRequested = 1;
@@ -451,10 +444,10 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 
 }
 
+// Triggered when slave completes transmitting data to master (and master ACK it)
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-	HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &data, 1, I2C_NEXT_FRAME);
-
+	slaveTxComplete = 1;
 }
 
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
@@ -468,6 +461,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 	HAL_I2C_EnableListen_IT(hi2c);
+	offset = 0;
 
 }
 
@@ -486,6 +480,52 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 
 	HAL_UART_Transmit(&huart2, uart_rx_buff, 1, HAL_MAX_DELAY);
 
+}
+
+uint8_t AddrToData(uint8_t receive_addr){
+	uint8_t data = 0;
+	switch (receive_addr){
+				case WHO_AM_I:
+					data = 0xEE;
+					break;
+				case OUT_X_L:
+		//				data = (uint8_t)(adc_raw_value & 0xFF);
+					data = 11;
+					break;
+				case OUT_X_H:
+		//				data = (uint8_t)(adc_raw_value >> 8);
+					data = 12;
+					break;
+				case OUT_Y_L:
+		//				data = (uint8_t)((4096 - adc_raw_value) & 0xFF);
+					data = 14;
+					break;
+				case OUT_Y_H:
+		//				data = (uint8_t)((4096 - adc_raw_value) >> 8);
+					data = 16;
+					break;
+				case OUT_Z_L:
+	//				data = 0xc7 + (rand() % 10);
+					data = 18;
+					break;
+				case OUT_Z_H:
+		//				data = 0xc7;
+					data = 20 + (rand() % 4);
+	//				data = 20;
+					break;
+				case OUT_TEMP_L:
+		//				data = (uint8_t)(adc_raw_value & 0xFF);
+					data = 22;
+					break;
+				case OUT_TEMP_H:
+		//				data = (uint8_t)(adc_raw_value >> 8);
+					data = 24;
+					break;
+				default:
+					data = 0xff;
+					break;
+	}
+	return data;
 }
 
 
