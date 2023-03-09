@@ -19,7 +19,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "stdlib.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -54,8 +53,6 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-ADC_HandleTypeDef hadc1;
-
 I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
@@ -70,7 +67,6 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -86,12 +82,18 @@ volatile uint8_t transferRequested = 0;
 volatile uint8_t transferDirection;
 volatile uint16_t adc_raw_value = 0;
 volatile uint8_t firstByteTransmitted = 0;
+volatile uint8_t uartRxComplete = 0;
 
 
 volatile uint8_t offset = 0;
 volatile uint8_t slaveTxComplete = 0;
 
-
+volatile uint8_t accXL = 0;
+volatile uint8_t accXH = 0;
+volatile uint8_t accYL = 0;
+volatile uint8_t accYH = 0;
+volatile uint8_t accZL = 0;
+volatile uint8_t accZH = 0;
 
 /* USER CODE END 0 */
 
@@ -126,13 +128,11 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_I2C1_Init();
-  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
-  HAL_UART_Receive_DMA(&huart2, uart_rx_buff, 1);
+
+  // Receive 6 bytes to trigger UART Handler
+  HAL_UART_Receive_DMA(&huart2, uart_rx_buff, 6);
   HAL_I2C_EnableListen_IT(&hi2c1);
-  HAL_ADC_Start(&hadc1);
-
-
 
   /* USER CODE END 2 */
 
@@ -143,11 +143,6 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	HAL_I2C_EnableListen_IT(&hi2c1);
-	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	adc_raw_value = HAL_ADC_GetValue(&hadc1); // 16-bit, 0-4096
-
-
 	if (slaveTxComplete)
 	{
 		offset++;
@@ -174,9 +169,17 @@ int main(void)
 		transferRequested = 0;
 	}
 
+	if (uartRxComplete){
+		// Get the received simulated values
+		accXL = uart_rx_buff[0];
+		accXH = uart_rx_buff[1];
+		accYL = uart_rx_buff[2];
+		accYH = uart_rx_buff[3];
+		accZL = uart_rx_buff[4];
+		accZH = uart_rx_buff[5];
 
-
-
+		uartRxComplete = 0;
+	}
   }
   /* USER CODE END 3 */
 }
@@ -217,69 +220,12 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1|RCC_PERIPHCLK_ADC1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_I2C1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
-  PeriphClkInit.Adc1ClockSelection = RCC_ADC1PLLCLK_DIV1;
-
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
   }
-}
-
-/**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_ADC1_Init(void)
-{
-
-  /* USER CODE BEGIN ADC1_Init 0 */
-
-  /* USER CODE END ADC1_Init 0 */
-
-  ADC_ChannelConfTypeDef sConfig = {0};
-
-  /* USER CODE BEGIN ADC1_Init 1 */
-
-  /* USER CODE END ADC1_Init 1 */
-  /** Common config
-  */
-  hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV1;
-  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
-  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
-  hadc1.Init.ContinuousConvMode = ENABLE;
-  hadc1.Init.DiscontinuousConvMode = DISABLE;
-  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
-  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
-  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
-  hadc1.Init.NbrOfConversion = 1;
-  hadc1.Init.DMAContinuousRequests = DISABLE;
-  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
-  hadc1.Init.LowPowerAutoWait = DISABLE;
-  hadc1.Init.Overrun = ADC_OVR_DATA_OVERWRITTEN;
-  if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /** Configure Regular Channel
-  */
-  sConfig.Channel = ADC_CHANNEL_1;
-  sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SingleDiff = ADC_SINGLE_ENDED;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
-  sConfig.OffsetNumber = ADC_OFFSET_NONE;
-  sConfig.Offset = 0;
-  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN ADC1_Init 2 */
-
-  /* USER CODE END ADC1_Init 2 */
-
 }
 
 /**
@@ -344,7 +290,7 @@ static void MX_USART2_UART_Init(void)
 
   /* USER CODE END USART2_Init 1 */
   huart2.Instance = USART2;
-  huart2.Init.BaudRate = 57600;
+  huart2.Init.BaudRate = 115200;
   huart2.Init.WordLength = UART_WORDLENGTH_8B;
   huart2.Init.StopBits = UART_STOPBITS_1;
   huart2.Init.Parity = UART_PARITY_NONE;
@@ -474,12 +420,8 @@ void HAL_I2C_AbortCpltCallback(I2C_HandleTypeDef *hi2c)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 
 	UNUSED(huart);
-
-	// Receive
-	uint8_t buff = uart_rx_buff[0];
-
-	HAL_UART_Transmit(&huart2, uart_rx_buff, 1, HAL_MAX_DELAY);
-
+	uartRxComplete = 1;
+	// HAL_UART_Transmit(&huart2, uart_rx_buff, 6, HAL_MAX_DELAY);
 }
 
 uint8_t AddrToData(uint8_t receive_addr){
@@ -489,37 +431,22 @@ uint8_t AddrToData(uint8_t receive_addr){
 					data = 0xEE;
 					break;
 				case OUT_X_L:
-		//				data = (uint8_t)(adc_raw_value & 0xFF);
-					data = 11;
+					data = accXL + (rand() % 4);
 					break;
 				case OUT_X_H:
-		//				data = (uint8_t)(adc_raw_value >> 8);
-					data = 12;
+					data = accXH + (rand() % 4);
 					break;
 				case OUT_Y_L:
-		//				data = (uint8_t)((4096 - adc_raw_value) & 0xFF);
-					data = 14;
+					data = accYL + (rand() % 4);
 					break;
 				case OUT_Y_H:
-		//				data = (uint8_t)((4096 - adc_raw_value) >> 8);
-					data = 16;
+					data = accYH + (rand() % 4);
 					break;
 				case OUT_Z_L:
-	//				data = 0xc7 + (rand() % 10);
-					data = 18;
+					data = accZL + (rand() % 4);
 					break;
 				case OUT_Z_H:
-		//				data = 0xc7;
-					data = 20 + (rand() % 4);
-	//				data = 20;
-					break;
-				case OUT_TEMP_L:
-		//				data = (uint8_t)(adc_raw_value & 0xFF);
-					data = 22;
-					break;
-				case OUT_TEMP_H:
-		//				data = (uint8_t)(adc_raw_value >> 8);
-					data = 24;
+					data = accZH + (rand() % 4);
 					break;
 				default:
 					data = 0xff;
@@ -527,7 +454,6 @@ uint8_t AddrToData(uint8_t receive_addr){
 	}
 	return data;
 }
-
 
 #else SLAVE_EXPERIMENT
 
