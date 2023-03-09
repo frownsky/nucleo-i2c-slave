@@ -11,8 +11,6 @@
 * OUT_Y_H has an address of `0x24`. When read, gives out the y-axis linear acceleration (higher bits)
 * OUT_Z_L has an address of `0x25`. When read, gives out the y-axis linear acceleration (lower bits)
 * OUT_Z_H has an address of `0x26`. When read, gives out the x-axis linear acceleration (higher bits)
-* OUT_TEMP_L has an address of `0x27`. When read, gives out temperature reading (lower bits)
-* OUT_TEMP_H has an address of `0x28`. When read, gives out temperature readingn (higher bits)
 
 ## How to access
 
@@ -23,7 +21,6 @@ HAL_I2C_Mem_Read(&hi2c1, (I2C_SLAVE_ADDR << 1) , 0x10, I2C_MEMADD_SIZE_8BIT, &wh
 Read multiple bytes at once: The subsequent byte will come from REG_ADDR++
 ```
 HAL_I2C_Mem_Read(&hi2c1, (I2C_SLAVE_ADDR << 1) , REG_ADDR, I2C_MEMADD_SIZE_8BIT, receive, 6, 100);
-
 ```
 
 ## How to setup
